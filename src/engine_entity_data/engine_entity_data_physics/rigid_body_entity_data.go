@@ -79,31 +79,29 @@ func (r RigidBodyEntityData) Init(e *engine.Entity, host *engine.Host) {
 	host.StartPhysics()
 	t := &e.Transform
 	scale := t.Scale()
-	var shape *physics.CollisionShape
+	mass := r.Mass
+	if r.IsStatic {
+		mass = 0
+	}
+	var shape physics.ShapeConfig
 	switch r.Shape {
 	case ShapeBox:
-		size := r.Extent.Multiply(scale)
-		shape = &physics.NewBoxShape(size).CollisionShape
+		shape = physics.BoxShape(r.Extent.Multiply(scale))
 	case ShapeSphere:
 		rad := r.Radius * float32(scale.LongestAxis())
-		shape = &physics.NewSphereShape(rad).CollisionShape
+		shape = physics.SphereShape(rad)
 	case ShapeCapsule:
 		rad := r.Radius * float32(scale.LongestAxis())
 		height := r.Height * scale.Y()
-		shape = &physics.NewCapsuleShape(rad, height).CollisionShape
+		shape = physics.CapsuleShape(rad, height)
 	case ShapeCylinder:
-		size := r.Extent.Multiply(scale)
-		shape = &physics.NewCylinderShape(size).CollisionShape
+		shape = physics.CylinderShape(r.Extent.Multiply(scale))
 	case ShapeCone:
 		rad := r.Radius * float32(scale.LongestAxis())
 		height := r.Height * scale.Y()
-		shape = &physics.NewConeShape(rad, height).CollisionShape
+		shape = physics.ConeShape(rad, height)
 	}
-	if r.IsStatic {
-		r.Mass = 0
-	}
-	inertia := shape.CalculateLocalInertia(r.Mass)
-	motion := physics.NewDefaultMotionState(matrix.QuaternionFromEuler(t.Rotation()), t.Position())
-	body := physics.NewRigidBody(r.Mass, motion, shape, inertia)
+	body := physics.NewRigidBody(mass, 0.5, shape,
+		t.Position(), matrix.QuaternionFromEuler(t.Rotation()))
 	host.Physics().AddEntity(e, body)
 }
