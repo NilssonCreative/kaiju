@@ -60,6 +60,7 @@ JPH_SUPPRESS_WARNINGS
 
 using namespace JPH;
 
+
 /* Object layers: 0 = non-moving (static), 1 = moving (dynamic). */
 namespace Layers {
 	static constexpr ObjectLayer NON_MOVING = 0;
@@ -162,6 +163,7 @@ static ShapeRefC buildShape(
 	float radius, float height,
 	float /*n_x*/, float /*n_y*/, float /*n_z*/, float /*constant*/)
 {
+
 	switch (type) {
 	case JOLT_SHAPE_BOX:
 		return new BoxShape(Vec3(he_x, he_y, he_z));
@@ -172,9 +174,13 @@ static ShapeRefC buildShape(
 	case JOLT_SHAPE_CYLINDER:
 		return new CylinderShape(height * 0.5f, he_x);
 	case JOLT_SHAPE_CONE:
+	{
 		/* Jolt has no built-in cone; approximate with a tapered capsule
-		   (top radius ~0, bottom radius = cone base radius). */
-		return new TaperedCapsuleShape(height * 0.5f, 0.001f, radius);
+       (top radius ≈ 0, bottom radius = cone base radius). */
+		TaperedCapsuleShapeSettings settings(height * 0.5f, 0.001f, he_x);
+		auto result = settings.Create();
+		return result.Get();
+	}
 	default:
 		return new BoxShape(Vec3(he_x, he_y, he_z));
 	}

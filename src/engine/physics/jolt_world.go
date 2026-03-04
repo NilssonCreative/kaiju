@@ -37,11 +37,11 @@
 package physics
 
 /*
-#cgo CXXFLAGS: -std=c++17
+#cgo CXXFLAGS: -std=c++17 -DNDEBUG
 #cgo windows,amd64 LDFLAGS: -L../../libs -lJolt_win_amd64 -lstdc++ -lm
-#cgo linux,amd64 LDFLAGS: -L../../libs -lJolt_nix_amd64 -lstdc++ -lm
-#cgo darwin,arm64 LDFLAGS: -L../../libs -lJolt_darwin_arm64 -lstdc++ -lm
-#cgo darwin,amd64 LDFLAGS: -L../../libs -lJolt_darwin_amd64 -lstdc++ -lm
+#cgo linux,amd64 LDFLAGS: -L../../libs -l:libJolt_nix_amd64 -lstdc++ -lm
+#cgo darwin,arm64 LDFLAGS: -L../../libs -l:libJolt_darwin_arm64 -lstdc++ -lm
+#cgo darwin,amd64 LDFLAGS: -L../../libs -l:libJolt_darwin_amd64 -lstdc++ -lm
 #include "jolt_wrapper.h"
 #cgo noescape jolt_create_system
 #cgo nocallback jolt_create_system
@@ -68,9 +68,10 @@ package physics
 */
 import "C"
 import (
-	"kaijuengine.com/matrix"
 	"runtime"
 	"unsafe"
+
+	"kaijuengine.com/matrix"
 )
 
 // CollisionHit holds the result of a ray or sphere sweep cast against the
@@ -162,7 +163,7 @@ func (w *World) RemoveRigidBody(body *RigidBody) {
 // (4 floats each, order x y z w) for all currently active dynamic bodies.
 // It returns the number of bodies written, which is at most len(ids).
 func (w *World) GetActiveTransforms(
-	ids       []uint32,
+	ids []uint32,
 	positions []float32,
 	rotations []float32,
 ) int {
