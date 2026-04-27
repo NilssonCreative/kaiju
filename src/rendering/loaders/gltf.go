@@ -242,6 +242,7 @@ func gltfParse(doc *fullGLTF) (load_result.Result, error) {
 		res.Nodes[i].Attributes = n.Extras
 		// Populate the parent→child links in both directions so callers can
 		// traverse the hierarchy without an additional pass.
+		res.Nodes[i].Children = make([]int32, 0, len(n.Children))
 		for j := range n.Children {
 			cid := n.Children[j]
 			res.Nodes[cid].Parent = i

@@ -74,6 +74,7 @@ func (Mesh) ExtNames() []string { return []string{".gltf", ".glb", ".obj"} }
 type meshImportPostProcData struct {
 	mesh       load_result.Mesh
 	isAnimated bool
+	isEmpty    bool
 }
 
 func (Mesh) Import(src string, _ *project_file_system.FileSystem) (ProcessedImport, error) {
@@ -101,7 +102,7 @@ func (Mesh) Import(src string, _ *project_file_system.FileSystem) (ProcessedImpo
 			return p, err
 		}
 	}
-	if len(res.Meshes) == 0 {
+	if len(res.Meshes) == 0 && len(res.Empties()) == 0 {
 		return p, NoMeshesInFileError{Path: src}
 	}
 	baseName := fileNameNoExt(src)
@@ -118,7 +119,23 @@ func (Mesh) Import(src string, _ *project_file_system.FileSystem) (ProcessedImpo
 			Data: kd,
 		}
 		p.Variants = append(p.Variants, v)
-		postProcData[v.Name] = meshImportPostProcData{res.Meshes[i], res.IsTreeAnimated(int(res.Meshes[i].Node.Id))}
+		postProcData[v.Name] = meshImportPostProcData{res.Meshes[i], res.IsTreeAnimated(int(res.Meshes[i].Node.Id)), false}
+	}
+	// Import empty nodes (Blender Empties / locator objects) as additional
+	// mesh-category variants.  They carry no geometry but a full TRS
+	// transform that can be used as attach-points in the stage.
+	kes := kaiju_mesh.EmptiesFromResult(res)
+	for i := range kes {
+		kd, err := kes[i].Serialize()
+		if err != nil {
+			return p, err
+		}
+		v := ImportVariant{
+			Name: fmt.Sprintf("%s-%s", baseName, kes[i].Name),
+			Data: kd,
+		}
+		p.Variants = append(p.Variants, v)
+		postProcData[v.Name] = meshImportPostProcData{mesh: load_result.Mesh{}, isAnimated: false, isEmpty: true}
 	}
 	p.postProcessData = postProcData
 	for i := range res.Meshes {
@@ -154,6 +171,11 @@ func (Mesh) PostImportProcessing(proc ProcessedImport, res *ImportResult, fs *pr
 	variant, ok := meshes[cc.Config.Name]
 	if !ok {
 		slog.Error("failed to locate the mesh in the post processing data", "name", cc.Config.Name)
+		return nil
+	}
+	// Empty nodes (Blender Empties) carry no geometry or material; skip
+	// material creation entirely.
+	if variant.isEmpty {
 		return nil
 	}
 	matchTexture := func(srcPath string) rendering.MaterialTextureData {

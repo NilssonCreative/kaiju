@@ -76,12 +76,25 @@ const (
 // the result of that using [LoadedResultToKaijuMesh]. From this point, it is
 // typically serialized and stored into the content database. When reading a
 // mesh from the content database, it will return a KaijuMesh.
+//
+// When IsEmpty is true the mesh carries no geometry. It represents a Blender
+// Empty (or any other marker/locator node) and its local-space transform is
+// stored in Position, Rotation, and Scale.  Verts and Indexes will be empty.
 type KaijuMesh struct {
 	Name       string
 	Verts      []rendering.Vertex
 	Indexes    []uint32
 	Animations []KaijuMeshAnimation
 	Joints     []KaijuMeshJoint
+	// IsEmpty is true when this entry was imported from a Blender Empty
+	// (a node with no mesh, camera, or skin).
+	IsEmpty bool
+	// Position, Rotation, Scale hold the local-space transform of the Empty
+	// as exported from Blender.  These fields are zero/identity for regular
+	// mesh entries.
+	Position matrix.Vec3
+	Rotation matrix.Quaternion
+	Scale    matrix.Vec3
 }
 
 // LoadedResultToKaijuMesh will take in a [load_result.Result] and convert every
@@ -111,7 +124,28 @@ func LoadedResultToKaijuMesh(res load_result.Result) []KaijuMesh {
 	return out
 }
 
-// Serialize will convert a [KaijuMesh] into a byte array for saving to the
+// EmptiesFromResult returns one [KaijuMesh] entry (with [KaijuMesh.IsEmpty]
+// set to true) for each empty node in the loaded result.  Empty nodes are
+// glTF nodes that carry no mesh, camera, or skin – typically Blender Empties
+// used as locator / attach points (e.g. wheel hub references on a vehicle).
+//
+// The returned entries hold the local-space TRS transform of the empty as
+// authored in Blender.  Verts, Indexes, and animation data are all empty.
+func EmptiesFromResult(res load_result.Result) []KaijuMesh {
+	empties := res.Empties()
+	out := make([]KaijuMesh, 0, len(empties))
+	for _, n := range empties {
+		out = append(out, KaijuMesh{
+			Name:     n.Name,
+			IsEmpty:  true,
+			Position: n.Position,
+			Rotation: n.Rotation,
+			Scale:    n.Scale,
+		})
+	}
+	return out
+}
+
 // database or later use. This serialization uses the built-in [pod.Encoder]
 func (k KaijuMesh) Serialize() ([]byte, error) {
 	w := bytes.NewBuffer([]byte{})
