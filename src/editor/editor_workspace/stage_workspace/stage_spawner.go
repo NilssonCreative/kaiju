@@ -336,10 +336,21 @@ func (w *StageWorkspace) spawnMesh(cc *content_database.CachedContent, point mat
 		slog.Error("failed to deserialize the mesh", "id", cc.Id(), "error", err)
 		return
 	}
+	man := w.stageView.Manager()
+	// Empty nodes (Blender Empties) have no geometry.  Spawn a plain entity
+	// at the drop point so the user can use it as an attach-point, parent
+	// node, or physics reference frame.
+	if km.IsEmpty {
+		e := man.AddEntity(cc.Config.Name, point)
+		e.Transform.SetRotation(km.Rotation.ToEuler())
+		e.Transform.SetScale(km.Scale)
+		man.ClearSelection()
+		man.SelectEntity(e)
+		return
+	}
 	tex, _ := w.Host.TextureCache().Texture(assets.TextureSquare,
 		rendering.TextureFilterLinear)
 	mat = mat.CreateInstance([]*rendering.Texture{tex})
-	man := w.stageView.Manager()
 	e := man.AddEntity(cc.Config.Name, matrix.Vec3Zero())
 	e.StageData.Mesh = w.Host.MeshCache().Mesh(cc.Id(), km.Verts, km.Indexes)
 	e.StageData.Description.Mesh = e.StageData.Mesh.Key()
