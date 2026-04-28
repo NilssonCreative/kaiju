@@ -39,6 +39,7 @@ package editor_stage_view
 import (
 	"weak"
 
+	"kaijuengine.com/editor/editor_controls"
 	"kaijuengine.com/editor/editor_settings"
 	"kaijuengine.com/editor/editor_stage_manager"
 	"kaijuengine.com/editor/editor_stage_manager/editor_stage_view/transform_tools"
@@ -103,6 +104,13 @@ func (t *TransformationManager) Initialize(stageView *StageView, history *mement
 	t.scalingTool.OnDragStart.Add(t.scaleStart)
 	t.scalingTool.OnDragScale.Add(t.scaleScale)
 	t.scalingTool.OnDragEnd.Add(t.scaleEnd)
+	stageView.camera.OnModeChange.Add(t.cameraModeChanged)
+}
+
+func (t *TransformationManager) cameraModeChanged(mode editor_controls.EditorCameraMode) {
+	t.translateTool.SetDimensions(mode)
+	t.rotationTool.SetDimensions(mode)
+	t.scalingTool.SetDimensions(mode)
 }
 
 func (t *TransformationManager) Update(host *engine.Host) {

@@ -476,6 +476,11 @@ double cocoa_get_backing_scale_factor(void* nsWindow) {
 	return result;
 }
 
+int cocoa_screen_count(void* nsWindow) {
+	(void)nsWindow;
+	return 1; // TODO
+}
+
 void cocoa_get_position(void* nsWindow, int* x, int* y) {
 	if (!nsWindow) return;
 
@@ -625,14 +630,14 @@ void cocoa_get_bundle_resource_path(const char* resourceName, void** outPath) {
 	@autoreleasepool {
 		NSString* name = [NSString stringWithUTF8String:resourceName];
 		NSString* path = [[NSBundle mainBundle] pathForResource:name ofType:nil];
-		
+
 		if (path == nil) {
 			// Try with extension separated
 			NSString* extension = [name pathExtension];
 			NSString* basename = [name stringByDeletingPathExtension];
 			path = [[NSBundle mainBundle] pathForResource:basename ofType:extension];
 		}
-		
+
 		if (path != nil) {
 			*outPath = (void*)strdup([path UTF8String]);
 		} else {
@@ -649,7 +654,7 @@ void cocoa_remove_border(void* nsWindow) {
 			NSWindow* window = (__bridge NSWindow*)(nsWindow);
 			NSWindowStyleMask styleMask = [window styleMask];
 			// Remove title bar and border decorations
-			styleMask &= ~(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | 
+			styleMask &= ~(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
 						   NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable);
 			styleMask |= NSWindowStyleMaskBorderless;
 			[window setStyleMask:styleMask];
@@ -666,7 +671,7 @@ void cocoa_add_border(void* nsWindow) {
 			NSWindowStyleMask styleMask = [window styleMask];
 			// Add title bar and border decorations
 			styleMask &= ~NSWindowStyleMaskBorderless;
-			styleMask |= (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | 
+			styleMask |= (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
 						  NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable);
 			[window setStyleMask:styleMask];
 		}

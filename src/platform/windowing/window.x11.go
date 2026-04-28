@@ -69,6 +69,7 @@ package windowing
 #cgo noescape window_set_cursor_position
 #cgo noescape window_set_icon
 #cgo noescape window_invalidate_monitor_cache
+#cgo noescape screen_count
 
 #include <stdlib.h>
 #include "windowing.h"
@@ -192,6 +193,10 @@ func (w *Window) hideCursor() {
 
 func (w *Window) invalidateMonitorCache() {
 	C.window_invalidate_monitor_cache(w.handle)
+}
+
+func (w *Window) monitorCount() int {
+	return int(C.screen_count(w.handle))
 }
 
 func (w *Window) dotsPerMillimeter() float64 {

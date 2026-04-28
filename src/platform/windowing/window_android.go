@@ -113,6 +113,10 @@ func (w *Window) clipboardContents() string {
 
 func (w *Window) invalidateMonitorCache() {}
 
+func (w *Window) monitorCount() int {
+	return 1
+}
+
 func (w *Window) dotsPerMillimeter() float64 {
 	wmm, hmm, err := w.screenSizeMM()
 	if err != nil || wmm == 0 || hmm == 0 {

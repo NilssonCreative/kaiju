@@ -72,7 +72,7 @@ const (
 var cameraModeStrings = []string{"None", "3D", "2D"}
 
 type EditorCamera struct {
-	OnModeChange     events.Event
+	OnModeChange     events.EventWithArg[EditorCameraMode]
 	Settings         *editor_settings.EditorCameraSettings
 	camera           cameras.Camera
 	lastMousePos     matrix.Vec2
@@ -125,7 +125,7 @@ func (e *EditorCamera) SetMode(mode EditorCameraMode, host *engine.Host) {
 		host.Window.OnResize.Remove(e.resizeId)
 		e.resizeId = host.Window.OnResize.Add(e.OnWindowResize)
 	}
-	e.OnModeChange.Execute()
+	e.OnModeChange.Execute(e.mode)
 }
 
 func (e *EditorCamera) OnWindowResize() {

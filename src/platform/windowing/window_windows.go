@@ -60,6 +60,7 @@ import (
 #cgo noescape window_dpi
 #cgo noescape screen_width_mm
 #cgo noescape screen_height_mm
+#cgo noescape screen_count
 #cgo noescape window_focus
 #cgo noescape window_position
 #cgo noescape window_set_position
@@ -167,6 +168,10 @@ func (w *Window) invalidateMonitorCache() {}
 func (w *Window) dotsPerMillimeter() float64 {
 	dpi := float64(C.window_dpi(w.handle))
 	return dpi / 25.4
+}
+
+func (w *Window) monitorCount() int {
+	return int(C.screen_count(w.handle))
 }
 
 func (w *Window) sizeMM() (int, int, error) {

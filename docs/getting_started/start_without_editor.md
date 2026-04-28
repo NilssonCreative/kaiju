@@ -36,7 +36,7 @@ This means it is compiled **only** when the `editor` tag is **absent**. The defa
 
 ```powershell
 # Build from the src directory and output the executable one level up
-go build .
+go build -o kaiju .
 ```
 
 The resulting `kaiju` executable lives in the repository root.

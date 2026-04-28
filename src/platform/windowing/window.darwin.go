@@ -187,6 +187,10 @@ func (w *Window) screenSizeMM() (int, int, error) {
 
 func (w *Window) invalidateMonitorCache() {}
 
+func (w *Window) monitorCount() int {
+	return int(C.cocoa_screen_count(w.instance))
+}
+
 func (w *Window) dotsPerMillimeter() float64 {
 	if w.instance == nil {
 		return 0

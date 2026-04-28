@@ -120,11 +120,12 @@ void window_main(const char* windowTitle,
 		free(x11State);
 		return;
 	}
-	if (x < 0) {
-		x = 10;
-	}
-	if (y < 0) {
-		y = 10;
+	if (x < 0 || y < 0) {
+		int screen = DefaultScreen(d);               // primary screen
+		int screenWidth = DisplayWidth(d, screen);   // primary screen
+		int screenHeight = DisplayHeight(d, screen); // primary screen
+		x = (screenWidth - width) / 2;
+		y = (screenHeight - height) / 2;
 	}
 	Window w = XCreateSimpleWindow(d, RootWindow(d, DefaultScreen(d)), x, y,
 		width, height, 1, BlackPixel(d, DefaultScreen(d)), WhitePixel(d, DefaultScreen(d)));
@@ -639,6 +640,11 @@ int window_height_mm(void* state) {
 	return XDisplayHeightMM(s->d, sid);
 }
 
+int screen_count(void* state) {
+	(void)state;
+	return 1; // TODO
+}
+
 void window_cursor_standard(void* state) {
 	X11State* s = state;
 	Cursor c = XcursorLibraryLoadCursor(s->d, "arrow");
@@ -782,7 +788,7 @@ void window_set_windowed(void* state, int width, int height) {
     ev.data.l[1] = XInternAtom(s->d, "_NET_WM_STATE_FULLSCREEN", False);
     ev.data.l[2] = 0;
     ev.data.l[3] = 1;
-    XSendEvent(s->d, DefaultRootWindow(s->d), False, 
+    XSendEvent(s->d, DefaultRootWindow(s->d), False,
                SubstructureRedirectMask | SubstructureNotifyMask, (XEvent*)&ev);
     XWindowChanges changes;
     changes.x = s->sm.savedState.rect.left;
@@ -834,7 +840,7 @@ void window_set_icon(void* state, int width, int height, const unsigned char* rg
 		unsigned char a = rgba[i * 4 + 3];
 		iconData[2 + i] = ((unsigned long)a << 24) | ((unsigned long)b << 16) | ((unsigned long)g << 8) | r;
 	}
-	XChangeProperty(s->d, s->w, netWmIcon, XA_CARDINAL, 32, PropModeReplace, 
+	XChangeProperty(s->d, s->w, netWmIcon, XA_CARDINAL, 32, PropModeReplace,
 		(unsigned char*)iconData, dataLen);
 	XFlush(s->d);
 	free(iconData);

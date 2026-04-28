@@ -37,6 +37,7 @@
 package transform_tools
 
 import (
+	"kaijuengine.com/editor/editor_controls"
 	"kaijuengine.com/engine"
 	"kaijuengine.com/engine/cameras"
 	"kaijuengine.com/engine/collision"
@@ -68,20 +69,15 @@ const (
 )
 
 type TranslationTool struct {
-	root          matrix.Transform
+	TransformGizmo
 	arrows        [3]TranslationToolArrow
 	planes        [3]TranslationToolPlane
-	lastCamPos    matrix.Vec3
-	lastHit       matrix.Vec3
 	rootHitOffset matrix.Vec3
 	dragStart     matrix.Vec3
 	OnDragStart   events.EventWithArg[matrix.Vec3]
 	OnDragMove    events.EventWithArg[matrix.Vec3]
 	OnDragEnd     events.EventWithArg[matrix.Vec3]
-	currentAxis   int
 	currentType   TranslationHitEnum
-	dragging      bool
-	visible       bool
 }
 
 type TranslationToolArrow struct {
@@ -173,9 +169,16 @@ func (p *TranslationToolPlane) Initialize(host *engine.Host, vec int) {
 func (t *TranslationTool) Show(pos matrix.Vec3) {
 	t.visible = true
 	t.root.SetPosition(pos)
-	for i := range t.arrows {
+	axis := len(t.arrows)
+	is2D := t.cameraMode == editor_controls.EditorCameraMode2d
+	if is2D {
+		axis = 2
+	}
+	for i := range axis {
 		t.arrows[i].shaderData.Activate()
-		t.planes[i].shaderData.Activate()
+		if is2D && i == 0 {
+			t.planes[i].shaderData.Activate()
+		}
 	}
 	t.updateHitBoxes()
 }
@@ -201,21 +204,16 @@ func (t *TranslationTool) Update(host *engine.Host, snap bool, snapScale float32
 	return t.dragging
 }
 
+func (t *TranslationTool) SetDimensions(mode editor_controls.EditorCameraMode) {
+	t.cameraMode = mode
+	if t.visible {
+		t.Hide()
+		t.Show(t.root.Position())
+	}
+}
+
 func (t *TranslationTool) resize(cam cameras.Camera) {
-	camPos := cam.Position()
-	if camPos.Equals(t.lastCamPos) {
-		return
-	}
-	t.lastCamPos = camPos
-	viewMat := cam.View()
-	gizmoPos := t.root.Position().AsVec4()
-	viewPos := matrix.Mat4MultiplyVec4(viewMat, gizmoPos)
-	dist := matrix.Abs(viewPos.Z())
-	if dist <= matrix.FloatSmallestNonzero {
-		return
-	}
-	gizmoScale := dist * translationGizmoScale
-	t.root.SetScale(matrix.NewVec3(gizmoScale, gizmoScale, gizmoScale))
+	t.TransformGizmo.resize(cam)
 	t.updateHitBoxes()
 }
 
@@ -258,11 +256,19 @@ func (t *TranslationTool) updateHitBoxes() {
 	}
 }
 
+func (t *TranslationTool) mousePosition(host *engine.Host) matrix.Vec2 {
+	if t.cameraMode == editor_controls.EditorCameraMode2d {
+		return host.Window.Cursor.ScreenPosition()
+	} else {
+		return host.Window.Cursor.Position()
+	}
+}
+
 func (t *TranslationTool) hitCheck(host *engine.Host, cam cameras.Camera) {
 	if t.dragging {
 		return
 	}
-	ray := cam.RayCast(host.Window.Cursor.Position())
+	ray := cam.RayCast(t.mousePosition(host))
 	dist := matrix.FloatMax
 	target := -1
 	targetType := TRANSLATION_TYPE_NONE
@@ -332,6 +338,9 @@ func (t *TranslationTool) processDrag(host *engine.Host, cam cameras.Camera, sna
 	if c.Pressed() {
 		t.dragStart = t.lastHit
 		t.rootHitOffset = t.root.Position().Subtract(t.lastHit)
+		if t.cameraMode == editor_controls.EditorCameraMode2d {
+			t.rootHitOffset.SetY(-t.rootHitOffset.Y())
+		}
 		t.dragging = true
 		// TODO:  Make this in the settings to allow for warping mouse to center
 		// p, ok := matrix.Mat4ToScreenSpace(t.root.Position(), cam.View(), cam.Projection(), cam.Viewport())
@@ -367,12 +376,14 @@ func (t *TranslationTool) processDrag(host *engine.Host, cam cameras.Camera, sna
 		nml := cp.Subtract(rp)
 		if hit, ok := cam.TryPlaneHit(c.Position(), rp, nml); ok {
 			p := hit.Add(t.rootHitOffset)
+			if t.cameraMode == editor_controls.EditorCameraMode2d {
+				p.SetY(-p.Y())
+			}
 			if snap {
 				p.SetX(matrix.Floor(p.X()/snapScale) * snapScale)
 				p.SetY(matrix.Floor(p.Y()/snapScale) * snapScale)
 				p.SetZ(matrix.Floor(p.Z()/snapScale) * snapScale)
 			}
-
 			switch t.currentType {
 			case TRANSLATION_TYPE_ARROW:
 				switch t.currentAxis {
@@ -403,10 +414,7 @@ func (t *TranslationTool) processDrag(host *engine.Host, cam cameras.Camera, sna
 		if c.Released() {
 			t.dragging = false
 			t.OnDragEnd.Execute(t.root.Position())
-			for i := range t.arrows {
-				t.arrows[i].shaderData.Activate()
-				t.planes[i].shaderData.Activate()
-			}
+			t.Show(t.root.Position())
 		}
 	}
 }

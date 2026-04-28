@@ -57,6 +57,7 @@ void window_cursor_size_we(void* hwnd);
 float window_dpi(void* hwnd);
 int screen_width_mm(void* hwnd);
 int screen_height_mm(void* hwnd);
+int screen_count(void* hwnd);
 void window_focus(void* hwnd);
 void window_position(void* hwnd, int* x, int* y);
 void window_set_position(void* hwnd, int x, int y);

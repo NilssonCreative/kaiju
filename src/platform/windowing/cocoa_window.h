@@ -27,6 +27,8 @@ int cocoa_get_screen_pixel_height(void* nsWindow);
 // Get backing scale factor
 double cocoa_get_backing_scale_factor(void* nsWindow);
 
+int cocoa_screen_count(void* nsWindow);
+
 // Window position and size
 void cocoa_get_position(void* nsWindow, int* x, int* y);
 void cocoa_set_position(void* nsWindow, int x, int y);

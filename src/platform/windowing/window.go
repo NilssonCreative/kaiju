@@ -47,6 +47,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"kaijuengine.com/debug"
 	"kaijuengine.com/engine/assets"
 	"kaijuengine.com/engine/systems/events"
 	"kaijuengine.com/klib"
@@ -126,6 +127,9 @@ func (m TitleBarMode) String() string {
 
 func New(windowName string, width, height, x, y int, adb assets.Database, platformState any) (*Window, error) {
 	defer tracing.NewRegion("windowing.New").End()
+	debug.Assert(width > 0, "window width must be greater than zero")
+	debug.Assert(height > 0, "window height must be greater than zero")
+	debug.Assert(adb != nil, "asset database cannot be nil")
 	w := &Window{
 		Keyboard:   hid.NewKeyboard(),
 		Mouse:      hid.NewMouse(),
@@ -261,6 +265,15 @@ func (w *Window) DotsPerMillimeter() float64 {
 	return w.dotsPerMillimeter()
 }
 
+// NOTE: currently only implemented on windows
+func (w *Window) MonitorCount() int {
+	count := w.monitorCount()
+	if count < 1 {
+		return 1
+	}
+	return count
+}
+
 func (w *Window) SizeMM() (int, int, error) {
 	return w.sizeMM()
 }
@@ -288,10 +301,12 @@ func (w *Window) IsTabletSize() bool {
 }
 
 func DPI2PX(pixels, mm, targetMM int) int {
+	debug.Assert(mm != 0, "DPI2PX mm cannot be zero")
 	return targetMM * (pixels / mm)
 }
 
 func DPI2PXF(pixels, mm, targetMM float64) float64 {
+	debug.Assert(mm != 0, "DPI2PXF mm cannot be zero")
 	return targetMM * (pixels / mm)
 }
 
@@ -371,6 +386,8 @@ func (w *Window) SetPosition(x, y int) {
 }
 
 func (w *Window) SetSize(width, height int) {
+	debug.Assert(width >= 0, "window width cannot be negative")
+	debug.Assert(height >= 0, "window height cannot be negative")
 	w.setSize(width, height)
 	w.width = width
 	w.height = height
@@ -384,6 +401,8 @@ func (w *Window) IsFullScreen() bool { return w.isFullScreen }
 func (w *Window) UnlockCursor()      { w.unlockCursor() }
 
 func (w *Window) LockCursor(x, y int) {
+	debug.Assert(w.width > 0, "cannot lock cursor: window width must be greater than zero")
+	debug.Assert(w.height > 0, "cannot lock cursor: window height must be greater than zero")
 	w.lockCursor(x, y)
 	w.Mouse.SetPosition(float32(x), float32(y), float32(w.width), float32(w.height))
 }
@@ -397,6 +416,8 @@ func (w *Window) SetFullscreen() {
 }
 
 func (w *Window) SetWindowed(width, height int) {
+	debug.Assert(width > 0, "windowed mode width must be greater than zero")
+	debug.Assert(height > 0, "windowed mode height must be greater than zero")
 	w.setWindowed(width, height)
 	w.isFullScreen = false
 }
@@ -407,6 +428,7 @@ func (w *Window) Center() (x int, y int) {
 }
 
 func (w *Window) OpenFileDialog(startPath string, extensions []filesystem.DialogExtension, ok func(path string), cancel func()) error {
+	debug.Assert(ok != nil, "OpenFileDialog requires a non-nil ok callback")
 	w.disableRawMouse()
 	return filesystem.OpenFileDialogWindow(startPath, extensions, func(path string) {
 		w.enableRawMouse()
@@ -420,6 +442,7 @@ func (w *Window) OpenFileDialog(startPath string, extensions []filesystem.Dialog
 }
 
 func (w *Window) SaveFileDialog(startPath string, fileName string, extensions []filesystem.DialogExtension, ok func(path string), cancel func()) error {
+	debug.Assert(ok != nil, "SaveFileDialog requires a non-nil ok callback")
 	w.disableRawMouse()
 	return filesystem.OpenSaveFileDialogWindow(startPath, fileName, extensions, func(path string) {
 		w.enableRawMouse()
@@ -438,6 +461,7 @@ func (w *Window) DisableRawMouseInput() { w.disableRawMouse() }
 func (w *Window) SetTitle(name string) { w.setTitle(name) }
 
 func (w *Window) SetTitleBarMode(mode TitleBarMode) {
+	debug.Assert(mode <= TitleBarModeDark, "Invalid TitleBarMode")
 	w.titleBarMode = mode
 	w.setTitleBarMode(mode)
 }

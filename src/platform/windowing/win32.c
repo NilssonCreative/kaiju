@@ -586,11 +586,11 @@ void window_main(const wchar_t* windowTitle,
 	AdjustWindowRectEx(&clientArea, WS_OVERLAPPEDWINDOW, FALSE, 0);
 	width = clientArea.right-clientArea.left;
 	height = clientArea.bottom-clientArea.top;
-	if (x < 0) {
-		x = CW_USEDEFAULT;
-	}
-	if (y < 0) {
-		x = CW_USEDEFAULT;
+	if (x < 0 || y < 0) {
+		int screenWidth = GetSystemMetrics(SM_CXSCREEN);  // primary screen
+		int screenHeight = GetSystemMetrics(SM_CYSCREEN); // primary screen
+		x = (screenWidth - width) / 2;
+		y = (screenHeight - height) / 2;
 	}
     // Create the window.
     HWND hwnd = CreateWindowEx(
@@ -840,6 +840,11 @@ void window_cursor_size_we(void* hwnd) {
 
 float window_dpi(void* hwnd) {
 	return ((float)GetDpiForWindow(hwnd));
+}
+
+int screen_count(void* hwnd) {
+	(void)hwnd;
+	return GetSystemMetrics(SM_CMONITORS);
 }
 
 int screen_width_mm(void* hwnd) {

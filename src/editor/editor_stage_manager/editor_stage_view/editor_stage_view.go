@@ -192,8 +192,8 @@ func (v *StageView) createViewportGrid() {
 func (v *StageView) setupCamera(ed EditorStageViewWorkspaceInterface) {
 	defer tracing.NewRegion("StageView.setupCamera").End()
 	pjs := &ed.Project().Settings
-	v.camera.OnModeChange.Add(func() {
-		switch v.camera.Mode() {
+	v.camera.OnModeChange.Add(func(mode editor_controls.EditorCameraMode) {
+		switch mode {
 		case editor_controls.EditorCameraMode3d:
 			// Identity matrix is fine
 			v.gridShader.Color.SetA(1)

@@ -1,5 +1,5 @@
 /******************************************************************************/
-/* controller_linux.go                                                        */
+/* transform_gizmo.go                                                         */
 /******************************************************************************/
 /*                            This file is part of                            */
 /*                                KAIJU ENGINE                                */
@@ -34,47 +34,55 @@
 /* OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                              */
 /******************************************************************************/
 
-//go:build !android
+package transform_tools
 
-package hid
+import (
+	"kaijuengine.com/editor/editor_controls"
+	"kaijuengine.com/engine/cameras"
+	"kaijuengine.com/matrix"
+)
 
-import "errors"
+type TransformGizmo struct {
+	root        matrix.Transform
+	lastCamPos  matrix.Vec3
+	lastCamSize matrix.Vec2
+	lastHit     matrix.Vec3
+	currentAxis int
+	cameraMode  editor_controls.EditorCameraMode
+	dragging    bool
+	visible     bool
+}
 
-func ToControllerButton(nativeButton int) (ControllerButton, error) {
-	switch nativeButton {
-	case 0:
-		return ControllerButtonA, nil
-	case 1:
-		return ControllerButtonB, nil
-	case 2:
-		return ControllerButtonX, nil
-	case 3:
-		return ControllerButtonY, nil
-	case 4:
-		return ControllerButtonLeftBumper, nil
-	case 5:
-		return ControllerButtonRightBumper, nil
-	case 6:
-		return ControllerButtonSelect, nil
-	case 7:
-		return ControllerButtonStart, nil
-	case 8:
-		return ControllerButtonEx1, nil
-	case 9:
-		return ControllerButtonLeftStick, nil
-	case 10:
-		return ControllerButtonRightStick, nil
-	case 11:
-		return ControllerButtonEx2, nil
-	case 12:
-		return ControllerButtonUp, nil
-	case 13:
-		return ControllerButtonDown, nil
-	case 14:
-		return ControllerButtonLeft, nil
-	case 15:
-		return ControllerButtonRight, nil
-	default:
-		return 0, errors.New("invalid controller button")
+func (t *TransformGizmo) resize(cam cameras.Camera) {
+	isOrtho := cam.IsOrthographic()
+	if isOrtho {
+		camSize := matrix.NewVec2(cam.Width(), cam.Height())
+		if camSize.Equals(t.lastCamSize) {
+			return
+		}
+		t.lastCamSize = camSize
+	} else {
+		camPos := cam.Position()
+		if camPos.Equals(t.lastCamPos) {
+			return
+		}
+		t.lastCamPos = camPos
 	}
+	gizmoScale := matrix.Float(translationGizmoScale)
+	if !isOrtho {
+		viewMat := cam.View()
+		gizmoPos := t.root.Position().AsVec4()
+		viewPos := matrix.Mat4MultiplyVec4(viewMat, gizmoPos)
+		dist := matrix.Abs(viewPos.Z())
+		if dist <= matrix.FloatSmallestNonzero {
+			return
+		}
+		gizmoScale = dist * translationGizmoScale
+	} else {
+		viewWidth := cam.Width()
+		viewHeight := cam.Height()
+		maxDim := matrix.Float(matrix.Max(viewWidth, viewHeight))
+		gizmoScale = maxDim * translationGizmoScale / 3
+	}
+	t.root.SetScale(matrix.NewVec3(gizmoScale, gizmoScale, gizmoScale))
 }

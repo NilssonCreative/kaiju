@@ -145,6 +145,9 @@ func (l *ShaderLayout) FullName() string {
 
 func (l *ShaderLayout) IsBuffer() bool {
 	// Ignore the global uniform buffer for now
+	if l.Type == "StorageBuffer" {
+		return true
+	}
 	if l.Location < 0 || l.Type == "UniformBufferObject" {
 		return false
 	}
