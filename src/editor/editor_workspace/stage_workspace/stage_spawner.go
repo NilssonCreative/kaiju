@@ -338,12 +338,14 @@ func (w *StageWorkspace) spawnMesh(cc *content_database.CachedContent, point mat
 	}
 	man := w.stageView.Manager()
 	// Empty nodes (Blender Empties) have no geometry.  Spawn a plain entity
-	// at the drop point so the user can use it as an attach-point, parent
-	// node, or physics reference frame.
+	// with a plain-axes wire gizmo so the empty is visible and selectable in
+	// the viewport.
 	if km.IsEmpty {
 		e := man.AddEntity(cc.Config.Name, point)
 		e.Transform.SetRotation(km.Rotation.ToEuler())
 		e.Transform.SetScale(km.Scale)
+		e.StageData.Description.Mesh = editor_stage_manager.EmptyMeshId
+		editor_stage_manager.SpawnEmptyGizmo(e, w.Host, man)
 		man.ClearSelection()
 		man.SelectEntity(e)
 		return
