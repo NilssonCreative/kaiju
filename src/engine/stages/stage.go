@@ -54,7 +54,15 @@ import (
 	"kaijuengine.com/rendering/loaders/kaiju_mesh"
 )
 
-const EntryPointAssetKey = "entryPointStage"
+const (
+	EntryPointAssetKey = "entryPointStage"
+
+	// EmptyMeshId is the sentinel value stored in EntityDescription.Mesh for
+	// empty nodes (Blender Empties / locator objects).  It is not a real content
+	// ID – the stage loader and editor both recognise this string and re-create
+	// the plain-axes gizmo instead of loading mesh geometry.
+	EmptyMeshId = "ed_empty"
+)
 
 type Stage struct {
 	Id       string

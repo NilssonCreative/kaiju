@@ -42,6 +42,7 @@ import (
 	"kaijuengine.com/engine"
 	"kaijuengine.com/engine/assets"
 	"kaijuengine.com/engine/collision"
+	"kaijuengine.com/engine/stages"
 	"kaijuengine.com/matrix"
 	"kaijuengine.com/platform/profiler/tracing"
 	"kaijuengine.com/registry/shader_data_registry"
@@ -49,11 +50,9 @@ import (
 )
 
 const (
-	// EmptyMeshId is the sentinel value stored in EntityDescription.Mesh for
-	// empty nodes (Blender Empties / locator objects).  It is not a real
-	// content ID – it tells LoadStage to re-create the editor gizmo instead
-	// of loading mesh geometry.
-	EmptyMeshId = "ed_empty"
+	// EmptyMeshId is re-exported from the stages package for backward
+	// compatibility.  New code should reference stages.EmptyMeshId directly.
+	EmptyMeshId = stages.EmptyMeshId
 
 	emptyAxesMeshKey = "ed_empty_axes"
 	emptyAxesExtent  = matrix.Float(0.5)
