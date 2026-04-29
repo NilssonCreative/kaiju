@@ -48,6 +48,7 @@ import (
 
 	"kaijuengine.com/debug"
 	"kaijuengine.com/engine"
+	"kaijuengine.com/engine/assets"
 	"kaijuengine.com/engine/systems/events"
 	"kaijuengine.com/engine/ui"
 	"kaijuengine.com/engine/ui/markup/css/rules"
@@ -292,7 +293,7 @@ func (d *Document) createUIElement(uiMan *ui.Manager, e *Element, parent *ui.Pan
 			}
 			if err != nil {
 				slog.Error(err.Error())
-				return
+				tex, _ = host.TextureCache().Texture(assets.TextureSquare, rendering.TextureFilterLinear)
 			}
 			img := panel.Base().ToImage()
 			if strings.HasSuffix(src, ".gif") {

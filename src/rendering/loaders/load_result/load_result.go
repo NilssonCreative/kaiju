@@ -158,10 +158,11 @@ type Joint struct {
 // Result is the top-level output of a model loader.  It contains the full
 // node hierarchy, mesh data, animations, and skin joints.
 type Result struct {
-	Nodes      []Node
-	Meshes     []Mesh
-	Animations []Animation
-	Joints     []Joint
+	Nodes        []Node
+	Meshes       []Mesh
+	Animations   []Animation
+	Joints       []Joint
+	TextureBytes map[string][]byte
 }
 
 // IsTreeAnimated reports whether nodeIdx or any of its ancestors are targeted

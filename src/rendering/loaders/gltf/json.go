@@ -176,9 +176,10 @@ type Texture struct {
 }
 
 type Image struct {
-	Name     string `json:"name"`
-	URI      string `json:"uri"`
-	MimeType string `json:"mimeType"`
+	Name       string `json:"name"`
+	URI        string `json:"uri"`
+	MimeType   string `json:"mimeType"`
+	BufferView *int32 `json:"bufferView"`
 }
 
 type Accessor struct {

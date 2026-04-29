@@ -312,6 +312,23 @@ func (ed *Editor) CreateHtmlUiFile(name string) {
 	}
 }
 
+func (ed *Editor) CreateCssStylesheetFile(name string) {
+	sb := strings.Builder{}
+	sb.WriteString("/* ")
+	sb.WriteString(name)
+	sb.WriteString(" */")
+	pfs := ed.ProjectFileSystem()
+	cache := ed.Cache()
+	ids := content_database.ImportRaw(name, []byte(sb.String()), content_database.Css{}, pfs, cache)
+	if len(ids) > 0 {
+		ed.events.OnContentAdded.Execute(ids)
+		cc, err := cache.Read(ids[0])
+		if err != nil {
+			exec.Command("code", pfs.FullPath(""), pfs.FullPath(cc.ContentPath())).Run()
+		}
+	}
+}
+
 func (ed *Editor) saveCurrentStageWithoutNameInput() {
 	sm := ed.stageView.Manager()
 	if err := sm.SaveStage(ed.project.CacheDatabase(), ed.project.FileSystem()); err == nil {

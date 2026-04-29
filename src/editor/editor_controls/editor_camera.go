@@ -402,10 +402,31 @@ func (e *EditorCamera) update2d(host *engine.Host, _ float64) (changed bool) {
 		h := oc.Height()
 		r := cw / ch
 		zoomFloor := klib.ClampAbs(mouse.Scroll().Y(), e.Settings.ZoomSpeed)
-		w += (cw / cw) * r * -zoomScale2DScroll * zoomFloor
-		h += (ch / cw) * r * -zoomScale2DScroll * zoomFloor
-		if w > matrix.FloatSmallestNonzero && h > matrix.FloatSmallestNonzero {
-			oc.Resize(w, h)
+		// Compute mouse world position before zoom (using consistent mapping from pan2d)
+		winW := float32(host.Window.Width())
+		winH := float32(host.Window.Height())
+		sx := w / winW
+		sy := h / winH
+		centerX := oc.LookAt().X()
+		centerY := oc.LookAt().Y()
+		mouseWorldX := centerX + (mp.X()-winW*0.5)*sx
+		mouseWorldY := centerY + (mp.Y()-winH*0.5)*sy
+		// Compute new size (additive zoom, preserving aspect via r)
+		dw := (cw / cw) * r * -zoomScale2DScroll * zoomFloor
+		dh := (ch / cw) * r * -zoomScale2DScroll * zoomFloor
+		newW := w + dw
+		newH := h + dh
+		if newW > matrix.FloatSmallestNonzero && newH > matrix.FloatSmallestNonzero {
+			// Adjust center so mouse world point stays under cursor after resize
+			newSx := newW / winW
+			newSy := newH / winH
+			newCenterX := mouseWorldX - (mp.X()-winW*0.5)*newSx
+			newCenterY := mouseWorldY - (mp.Y()-winH*0.5)*newSy
+			delta := matrix.NewVec3(newCenterX-centerX, newCenterY-centerY, 0)
+			pos := oc.Position()
+			look := oc.LookAt()
+			oc.SetPositionAndLookAt(pos.Add(delta), look.Add(delta))
+			oc.Resize(newW, newH)
 			changed = true
 		}
 	}

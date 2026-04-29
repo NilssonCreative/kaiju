@@ -37,11 +37,13 @@
 package loaders
 
 import (
+	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"unsafe"
 
@@ -57,9 +59,10 @@ import (
 // fullGLTF bundles the parsed glTF JSON document with its pre-loaded binary
 // buffer data so the two can be passed around together.
 type fullGLTF struct {
-	path string
-	glTF gltf.GLTF
-	bins [][]byte
+	path     string
+	glTF     gltf.GLTF
+	bins     [][]byte
+	textures map[int32][]byte
 }
 
 // rawMeshData is a temporary holder for vertex and index data while a single
@@ -124,6 +127,29 @@ func readFileGLB(file string, assetDB assets.Database) (fullGLTF, error) {
 		g.bins[i] = bins[:buffer.ByteLength]
 		bins = bins[buffer.ByteLength:]
 	}
+	g.textures = make(map[int32][]byte)
+	for i := range g.glTF.Images {
+		img := &g.glTF.Images[i]
+		if img.BufferView != nil {
+			view := g.glTF.BufferViews[*img.BufferView]
+			bin := g.bins[view.Buffer]
+			end := view.ByteOffset + view.ByteLength
+			if end > int32(len(bin)) {
+				return g, fmt.Errorf("image %d bufferView exceeds buffer bounds", i)
+			}
+			g.textures[int32(i)] = bin[view.ByteOffset:end]
+		} else if strings.HasPrefix(img.URI, "data:") {
+			comma := strings.Index(img.URI, ",")
+			if comma == -1 {
+				continue
+			}
+			b64 := img.URI[comma+1:]
+			decoded, err := base64.StdEncoding.DecodeString(b64)
+			if err == nil {
+				g.textures[int32(i)] = decoded
+			}
+		}
+	}
 	return g, nil
 }
 
@@ -140,6 +166,7 @@ func readFileGLTF(file string, assetDB assets.Database) (fullGLTF, error) {
 	}
 	g.glTF.Asset.FilePath = file
 	g.bins = make([][]byte, len(g.glTF.Buffers))
+	g.textures = make(map[int32][]byte)
 	root := filepath.Dir(file)
 	for i, path := range g.glTF.Buffers {
 		uri := filepath.Join(root, path.URI)
@@ -214,6 +241,7 @@ func GLTF(path string, assetDB assets.Database) (load_result.Result, error) {
 func gltfParse(doc *fullGLTF) (load_result.Result, error) {
 	defer tracing.NewRegion("loaders.gltfParse").End()
 	res := load_result.Result{}
+	res.TextureBytes = make(map[string][]byte)
 	res.Nodes = make([]load_result.Node, len(doc.glTF.Nodes))
 	for i := range res.Nodes {
 		res.Nodes[i].Parent = -1
@@ -288,7 +316,7 @@ func gltfParse(doc *fullGLTF) (load_result.Result, error) {
 					rmd.verts = verts
 					rmd.indices = indices
 				}
-				textures := gltfReadMeshTextures(m, &doc.glTF, p)
+				textures := gltfReadMeshTextures(m, doc, p, res.TextureBytes)
 				key := fmt.Sprintf("%s/%s", doc.path, m.Name)
 				if p > 0 {
 					key += fmt.Sprintf("_%d", p+1)
@@ -321,6 +349,17 @@ func gltfAttr(primitive gltf.Primitive, cmp string) (uint32, bool) {
 func gltfViewBytes(doc *fullGLTF, view *gltf.BufferView) []byte {
 	defer tracing.NewRegion("loaders.gltfViewBytes").End()
 	return doc.bins[view.Buffer][view.ByteOffset : view.ByteOffset+view.ByteLength]
+}
+
+func gltfTextureKey(doc *fullGLTF, imageIdx int32, texType string) (string, bool) {
+	if _, ok := doc.textures[imageIdx]; ok {
+		return "embedded_" + strconv.FormatInt(int64(imageIdx), 10) + "_" + texType, true
+	}
+	img := doc.glTF.Images[imageIdx]
+	if img.URI == "" {
+		return "", false
+	}
+	return filepath.ToSlash(filepath.Join(filepath.Dir(doc.path), img.URI)), false
 }
 
 func gltfReadMeshMorphTargets(mesh *gltf.Mesh, doc *fullGLTF, verts []rendering.Vertex) klib.ErrorList {
@@ -556,31 +595,35 @@ func gltfReadMeshIndices(mesh *gltf.Mesh, doc *fullGLTF, primitive int) ([]uint3
 	return convertedIndices, nil
 }
 
-func gltfReadMeshTextures(mesh *gltf.Mesh, doc *gltf.GLTF, primitive int) map[string]string {
+func gltfReadMeshTextures(mesh *gltf.Mesh, doc *fullGLTF, primitive int, textureBytes map[string][]byte) map[string]string {
 	defer tracing.NewRegion("loaders.gltfReadMeshTextures").End()
 	textures := make(map[string]string)
-	if len(doc.Materials) == 0 || mesh.Primitives[primitive].Material == nil {
+	if len(doc.glTF.Materials) == 0 || mesh.Primitives[primitive].Material == nil {
 		return textures
 	}
-	uri := func(textureIndex int32) string {
-		path := doc.Images[doc.Textures[textureIndex].Source].URI
-		return filepath.ToSlash(filepath.Join(filepath.Dir(doc.Asset.FilePath), path))
+	resolver := func(textureIndex int32, texType string) string {
+		srcIdx := doc.glTF.Textures[textureIndex].Source
+		key, embedded := gltfTextureKey(doc, srcIdx, texType)
+		if embedded {
+			textureBytes[key] = doc.textures[srcIdx]
+		}
+		return key
 	}
-	mat := doc.Materials[*mesh.Primitives[primitive].Material]
+	mat := doc.glTF.Materials[*mesh.Primitives[primitive].Material]
 	if mat.PBRMetallicRoughness.BaseColorTexture != nil {
-		textures["baseColor"] = uri(mat.PBRMetallicRoughness.BaseColorTexture.Index)
+		textures["baseColor"] = resolver(mat.PBRMetallicRoughness.BaseColorTexture.Index, "baseColor")
 	}
 	if mat.PBRMetallicRoughness.MetallicRoughnessTexture != nil {
-		textures["metallicRoughness"] = uri(mat.PBRMetallicRoughness.MetallicRoughnessTexture.Index)
+		textures["metallicRoughness"] = resolver(mat.PBRMetallicRoughness.MetallicRoughnessTexture.Index, "metallicRoughness")
 	}
 	if mat.NormalTexture != nil {
-		textures["normal"] = uri(mat.NormalTexture.Index)
+		textures["normal"] = resolver(mat.NormalTexture.Index, "normal")
 	}
 	if mat.OcclusionTexture != nil {
-		textures["occlusion"] = uri(mat.OcclusionTexture.Index)
+		textures["occlusion"] = resolver(mat.OcclusionTexture.Index, "occlusion")
 	}
 	if mat.EmissiveTexture != nil {
-		textures["emissive"] = uri(mat.EmissiveTexture.Index)
+		textures["emissive"] = resolver(mat.EmissiveTexture.Index, "emissive")
 	}
 	return textures
 }

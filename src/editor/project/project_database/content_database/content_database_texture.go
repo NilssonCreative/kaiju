@@ -45,17 +45,19 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"kaijuengine.com/editor/project/project_file_system"
 	"kaijuengine.com/platform/profiler/tracing"
 
 	"golang.org/x/image/bmp"
+	"golang.org/x/image/webp"
 )
 
 func init() { addCategory(Texture{}) }
 
 // Texture is a [ContentCategory] represented by a file with a ".png", ".jpg",
-// or ".jpeg" extension. Textures are as they seem.
+// ".jpeg" or ".webp extension. Textures are as they seem.
 type Texture struct{}
 type TextureConfig struct{}
 
@@ -64,12 +66,12 @@ type TextureConfig struct{}
 
 func (Texture) Path() string       { return project_file_system.ContentTextureFolder }
 func (Texture) TypeName() string   { return "Texture" }
-func (Texture) ExtNames() []string { return []string{".png", ".jpg", ".jpeg", ".bmp"} }
+func (Texture) ExtNames() []string { return []string{".png", ".jpg", ".jpeg", ".bmp", ".webp"} }
 
 func (Texture) Import(src string, _ *project_file_system.FileSystem) (ProcessedImport, error) {
 	defer tracing.NewRegion("Texture.Import").End()
 	var decoder func(r io.Reader) (image.Image, error) = nil
-	switch filepath.Ext(src) {
+	switch strings.ToLower(filepath.Ext(src)) {
 	case ".png":
 		decoder = png.Decode
 	case ".jpg":
@@ -78,6 +80,8 @@ func (Texture) Import(src string, _ *project_file_system.FileSystem) (ProcessedI
 		decoder = jpeg.Decode
 	case ".bmp":
 		decoder = bmp.Decode
+	case ".webp":
+		decoder = webp.Decode
 	}
 	if decoder != nil {
 		imgData, err := os.Open(src)

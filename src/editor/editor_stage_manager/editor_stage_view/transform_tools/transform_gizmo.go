@@ -40,6 +40,7 @@ import (
 	"kaijuengine.com/editor/editor_controls"
 	"kaijuengine.com/engine/cameras"
 	"kaijuengine.com/matrix"
+	"kaijuengine.com/platform/hid"
 )
 
 type TransformGizmo struct {
@@ -51,6 +52,14 @@ type TransformGizmo struct {
 	cameraMode  editor_controls.EditorCameraMode
 	dragging    bool
 	visible     bool
+}
+
+func (t *TransformGizmo) cursorPosition(c *hid.Cursor) matrix.Vec2 {
+	if t.cameraMode == editor_controls.EditorCameraMode2d {
+		return c.ScreenPosition()
+	} else {
+		return c.Position()
+	}
 }
 
 func (t *TransformGizmo) resize(cam cameras.Camera) {

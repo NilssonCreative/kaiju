@@ -80,23 +80,24 @@ static bool user_prefers_dark_mode(void);
 * Messages defined here are NOT to be sent to other windows
 * https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerwindowmessagea#remarks
 */
-#define UWM_SET_CURSOR		(WM_USER + 0x0001)
-#define CURSOR_ARROW        1
-#define CURSOR_IBEAM        2
-#define CURSOR_WAIT         3
-#define CURSOR_CROSS        4
-#define CURSOR_UPARROW      5
-#define CURSOR_SIZE_NWSE    6
-#define CURSOR_SIZE_NESW    7
-#define CURSOR_SIZE_WE      8
-#define CURSOR_SIZE_NS      9
-#define CURSOR_SIZE_ALL     10
-#define CURSOR_NO           11
-#define CURSOR_HAND         12
-#define CURSOR_APP_STARTING 13
-#define CURSOR_HELP         14
-#define CURSOR_PIN          15
-#define CURSOR_PERSON       16
+#define UWM_SET_CURSOR         (WM_USER + 0x0001)
+#define UWM_SET_TITLE_BAR_MODE (WM_USER + 0x0002)
+#define CURSOR_ARROW           1
+#define CURSOR_IBEAM           2
+#define CURSOR_WAIT            3
+#define CURSOR_CROSS           4
+#define CURSOR_UPARROW         5
+#define CURSOR_SIZE_NWSE       6
+#define CURSOR_SIZE_NESW       7
+#define CURSOR_SIZE_WE         8
+#define CURSOR_SIZE_NS         9
+#define CURSOR_SIZE_ALL        10
+#define CURSOR_NO              11
+#define CURSOR_HAND            12
+#define CURSOR_APP_STARTING    13
+#define CURSOR_HELP            14
+#define CURSOR_PIN             15
+#define CURSOR_PERSON          16
 
 static inline void readMousePosition(LPARAM lParam, int32_t* x, int32_t* y) {
 	*x = GET_X_LPARAM(lParam);
@@ -548,6 +549,12 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				SetClassLongPtr(hwnd, GCLP_HCURSOR, (LONG_PTR)c);
 			}
 			break;
+		}
+		case UWM_SET_TITLE_BAR_MODE:
+		{
+			sm->titleBarMode = (int)wParam;
+			apply_title_bar_mode(hwnd, sm->titleBarMode);
+			return 0;
 		}
 	}
 	return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -1082,11 +1089,21 @@ void window_set_title_bar_mode(void* hwnd, int mode) {
 	if (hwnd == NULL) {
 		return;
 	}
-	SharedMem* sm = (SharedMem*)GetWindowLongPtrA((HWND)hwnd, GWLP_USERDATA);
+	HWND window = (HWND)hwnd;
+	SharedMem* sm = (SharedMem*)GetWindowLongPtrA(window, GWLP_USERDATA);
 	if (sm != NULL) {
 		sm->titleBarMode = mode;
 	}
-	apply_title_bar_mode((HWND)hwnd, mode);
+
+	// This may be called from another thread. If so, send a message to the
+	// window's thread to update the title bar there. Calling the window API
+	// directly from a worker thread can deadlock.
+	DWORD windowThread = GetWindowThreadProcessId(window, NULL);
+	if (windowThread == GetCurrentThreadId()) {
+		apply_title_bar_mode(window, mode);
+	} else {
+		PostMessageA(window, UWM_SET_TITLE_BAR_MODE, (WPARAM)mode, 0);
+	}
 }
 
 void window_set_cursor_position(void* hwnd, int x, int y) {

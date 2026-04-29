@@ -256,19 +256,11 @@ func (t *TranslationTool) updateHitBoxes() {
 	}
 }
 
-func (t *TranslationTool) mousePosition(host *engine.Host) matrix.Vec2 {
-	if t.cameraMode == editor_controls.EditorCameraMode2d {
-		return host.Window.Cursor.ScreenPosition()
-	} else {
-		return host.Window.Cursor.Position()
-	}
-}
-
 func (t *TranslationTool) hitCheck(host *engine.Host, cam cameras.Camera) {
 	if t.dragging {
 		return
 	}
-	ray := cam.RayCast(t.mousePosition(host))
+	ray := cam.RayCast(t.cursorPosition(&host.Window.Cursor))
 	dist := matrix.FloatMax
 	target := -1
 	targetType := TRANSLATION_TYPE_NONE
@@ -338,9 +330,6 @@ func (t *TranslationTool) processDrag(host *engine.Host, cam cameras.Camera, sna
 	if c.Pressed() {
 		t.dragStart = t.lastHit
 		t.rootHitOffset = t.root.Position().Subtract(t.lastHit)
-		if t.cameraMode == editor_controls.EditorCameraMode2d {
-			t.rootHitOffset.SetY(-t.rootHitOffset.Y())
-		}
 		t.dragging = true
 		// TODO:  Make this in the settings to allow for warping mouse to center
 		// p, ok := matrix.Mat4ToScreenSpace(t.root.Position(), cam.View(), cam.Projection(), cam.Viewport())
@@ -364,21 +353,21 @@ func (t *TranslationTool) processDrag(host *engine.Host, cam cameras.Camera, sna
 		t.OnDragStart.Execute(t.root.Position())
 	} else if t.dragging {
 		rp := t.root.Position()
-		cp := cam.Position()
-		switch t.currentAxis {
-		case matrix.Vx:
-			cp.SetX(rp.X())
-		case matrix.Vy:
-			cp.SetY(rp.Y())
-		case matrix.Vz:
-			cp.SetZ(rp.Z())
-		}
-		nml := cp.Subtract(rp)
-		if hit, ok := cam.TryPlaneHit(c.Position(), rp, nml); ok {
-			p := hit.Add(t.rootHitOffset)
-			if t.cameraMode == editor_controls.EditorCameraMode2d {
-				p.SetY(-p.Y())
+		nml := matrix.Vec3Backward()
+		if t.cameraMode != editor_controls.EditorCameraMode2d {
+			cp := cam.Position()
+			switch t.currentAxis {
+			case matrix.Vx:
+				cp.SetX(rp.X())
+			case matrix.Vy:
+				cp.SetY(rp.Y())
+			case matrix.Vz:
+				cp.SetZ(rp.Z())
 			}
+			nml = cp.Subtract(rp)
+		}
+		if hit, ok := cam.TryPlaneHit(t.cursorPosition(&host.Window.Cursor), rp, nml); ok {
+			p := hit.Add(t.rootHitOffset)
 			if snap {
 				p.SetX(matrix.Floor(p.X()/snapScale) * snapScale)
 				p.SetY(matrix.Floor(p.Y()/snapScale) * snapScale)

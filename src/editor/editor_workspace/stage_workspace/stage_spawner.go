@@ -303,6 +303,17 @@ func (w *StageWorkspace) spawnTexture(cc *content_database.CachedContent, point 
 	}
 	w.Host.RunOnMainThread(func() {
 		tex.DelayedCreate(w.Host.Window.GpuInstance.PrimaryDevice())
+		if !w.stageView.IsView3D() && tex.Width > 0 && tex.Height > 0 {
+			var w, h matrix.Float = 1, 1
+			tw := matrix.Float(tex.Width)
+			th := matrix.Float(tex.Height)
+			if tex.Width < tex.Height {
+				h = th / tw
+			} else {
+				w = tw / th
+			}
+			e.Transform.SetScale(matrix.NewVec3(w, h, 1))
+		}
 		draw := rendering.Drawing{
 			Material:   mat,
 			Mesh:       e.StageData.Mesh,

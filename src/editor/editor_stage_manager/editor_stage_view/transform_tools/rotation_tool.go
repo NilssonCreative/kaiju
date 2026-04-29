@@ -155,7 +155,7 @@ func (t *RotationTool) hitCheck(host *engine.Host, cam cameras.Camera) {
 	if t.dragging {
 		return
 	}
-	ray := cam.RayCast(host.Window.Cursor.Position())
+	ray := cam.RayCast(t.cursorPosition(&host.Window.Cursor))
 	dist := matrix.FloatMax
 	target := -1
 	for i := range t.circles {
@@ -212,7 +212,7 @@ func (t *RotationTool) processDrag(host *engine.Host, cam cameras.Camera, snap b
 	if t.currentAxis == -1 {
 		return
 	}
-	c := host.Window.Cursor
+	c := &host.Window.Cursor
 	if c.Pressed() {
 		t.startDirection = t.lastHit.Subtract(t.root.Position()).Normal()
 		t.lastDirection = t.startDirection
@@ -234,12 +234,9 @@ func (t *RotationTool) processDrag(host *engine.Host, cam cameras.Camera, snap b
 		case matrix.Vz:
 			nml = matrix.NewVec3(0, 0, 1)
 		}
-		if hit, ok := cam.TryPlaneHit(c.Position(), rp, nml); ok {
+		if hit, ok := cam.TryPlaneHit(t.cursorPosition(c), rp, nml); ok {
 			dir := hit.Subtract(t.root.Position()).Normal()
 			angle := t.lastDirection.SignedAngle(dir, nml)
-			if t.cameraMode == editor_controls.EditorCameraMode2d && t.currentAxis == matrix.Vz {
-				angle = -angle
-			}
 			t.lastDirection = dir
 			t.rotationDelta += angle
 			rot := t.rotationVector()
