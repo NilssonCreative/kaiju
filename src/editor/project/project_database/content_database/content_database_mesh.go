@@ -154,7 +154,7 @@ func (Mesh) Import(src string, _ *project_file_system.FileSystem) (ProcessedImpo
 		}
 		parts := strings.Split(kms[i].Name, "/")
 		v := ImportVariant{
-			Name: fmt.Sprintf("%s-%s", baseName, parts[len(parts)-1]),
+			Name: parts[len(parts)-1],
 			Data: kd,
 		}
 		p.Variants = append(p.Variants, v)
@@ -176,7 +176,7 @@ func (Mesh) Import(src string, _ *project_file_system.FileSystem) (ProcessedImpo
 			return p, err
 		}
 		v := ImportVariant{
-			Name: fmt.Sprintf("%s-%s", baseName, kes[i].Name),
+			Name: kes[i].Name,
 			Data: kd,
 		}
 		p.Variants = append(p.Variants, v)
