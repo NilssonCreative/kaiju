@@ -691,6 +691,9 @@ func (m *StageManager) spawnLoadedEntity(e *StageEntity, host *engine.Host, fs *
 		km.Verts, km.Indexes = rendering.MeshQuadData()
 	case "plane":
 		km.Verts, km.Indexes = rendering.MeshPlaneData()
+	case EmptyMeshId:
+		SpawnEmptyGizmo(e, host, m)
+		return nil
 	default:
 		kmData, err := fs.ReadFile(filepath.Join(rootFolder, meshFolder, meshId))
 		if err != nil {

@@ -347,10 +347,23 @@ func (w *StageWorkspace) spawnMesh(cc *content_database.CachedContent, point mat
 		slog.Error("failed to deserialize the mesh", "id", cc.Id(), "error", err)
 		return
 	}
+	man := w.stageView.Manager()
+	// Empty nodes (Blender Empties) have no geometry.  Spawn a plain entity
+	// with a plain-axes wire gizmo so the empty is visible and selectable in
+	// the viewport.
+	if km.IsEmpty {
+		e := man.AddEntity(cc.Config.Name, point)
+		e.Transform.SetRotation(km.Rotation.ToEuler())
+		e.Transform.SetScale(km.Scale)
+		e.StageData.Description.Mesh = editor_stage_manager.EmptyMeshId
+		editor_stage_manager.SpawnEmptyGizmo(e, w.Host, man)
+		man.ClearSelection()
+		man.SelectEntity(e)
+		return
+	}
 	tex, _ := w.Host.TextureCache().Texture(assets.TextureSquare,
 		rendering.TextureFilterLinear)
 	mat = mat.CreateInstance([]*rendering.Texture{tex})
-	man := w.stageView.Manager()
 	e := man.AddEntity(cc.Config.Name, matrix.Vec3Zero())
 	e.StageData.Mesh = w.Host.MeshCache().Mesh(cc.Id(), km.Verts, km.Indexes)
 	e.StageData.Description.Mesh = e.StageData.Mesh.Key()

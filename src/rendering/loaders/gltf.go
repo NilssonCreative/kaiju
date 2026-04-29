@@ -56,6 +56,8 @@ import (
 	"kaijuengine.com/rendering/loaders/load_result"
 )
 
+// fullGLTF bundles the parsed glTF JSON document with its pre-loaded binary
+// buffer data so the two can be passed around together.
 type fullGLTF struct {
 	path     string
 	glTF     gltf.GLTF
@@ -63,6 +65,8 @@ type fullGLTF struct {
 	textures map[int32][]byte
 }
 
+// rawMeshData is a temporary holder for vertex and index data while a single
+// glTF primitive is being processed.
 type rawMeshData struct {
 	verts   []rendering.Vertex
 	indices []uint32
@@ -177,6 +181,28 @@ func readFileGLTF(file string, assetDB assets.Database) (fullGLTF, error) {
 	return g, nil
 }
 
+// GLTF loads a glTF 2.0 scene file (.gltf or .glb) from assetDB and returns
+// a [load_result.Result] containing the full node hierarchy, mesh data,
+// animations, and skin joints.
+//
+// Supported features:
+//   - Binary (.glb) and text (.gltf + external .bin) formats
+//   - Node hierarchy with parent/child relationships
+//   - Per-node TRS transforms (translation, rotation, scale) and the
+//     combined column-major "matrix" form
+//   - Static and skinned meshes (POSITION, NORMAL, TANGENT, TEXCOORD_0/1,
+//     JOINTS_0, WEIGHTS_0 vertex attributes)
+//   - Morph targets (blend shapes)
+//   - PBR materials with base-color, metallic-roughness, normal, occlusion,
+//     and emissive texture maps
+//   - Skeletal animations (translation, rotation, scale channels; linear,
+//     step, and cubic-spline interpolation)
+//   - Blender Empties / locator nodes – nodes that carry no mesh, camera, or
+//     skin are preserved in [load_result.Result.Nodes] with
+//     [load_result.Node.IsEmpty] set to true and can be queried via
+//     [load_result.Result.Empties] or [load_result.Result.NodeByName].
+//   - Custom properties exported from Blender (glTF "extras") are surfaced
+//     via [load_result.Node.Attributes].
 func GLTF(path string, assetDB assets.Database) (load_result.Result, error) {
 	defer tracing.NewRegion("loaders.GLTF").End()
 	if !assetDB.Exists(path) {
@@ -198,6 +224,20 @@ func GLTF(path string, assetDB assets.Database) (load_result.Result, error) {
 	}
 }
 
+// gltfParse converts the raw glTF document into a [load_result.Result].
+//
+// Node transform priority (per the glTF 2.0 specification §5.25):
+//  1. If the node carries a 4×4 column-major "matrix" field, it is
+//     decomposed into translation, rotation, and scale using the
+//     [matrix.Mat4] Extract* helpers.
+//  2. Otherwise the individual "translation", "rotation", and "scale"
+//     fields are used (defaulting to zero-translation, identity-rotation,
+//     and one-scale when absent).
+//
+// Blender Empties (objects without a mesh, camera, or skin) are preserved as
+// [load_result.Node] entries with [load_result.Node.IsEmpty] set to true.
+// Their full TRS transform is available for look-up or world-space
+// computation via [load_result.Result.NodeWorldTransform].
 func gltfParse(doc *fullGLTF) (load_result.Result, error) {
 	defer tracing.NewRegion("loaders.gltfParse").End()
 	res := load_result.Result{}
@@ -228,46 +268,61 @@ func gltfParse(doc *fullGLTF) (load_result.Result, error) {
 		res.Nodes[i].Id = int32(i)
 		res.Nodes[i].Name = n.Name
 		res.Nodes[i].Attributes = n.Extras
+		// Populate the parent→child links in both directions so callers can
+		// traverse the hierarchy without an additional pass.
+		res.Nodes[i].Children = make([]int32, 0, len(n.Children))
 		for j := range n.Children {
 			cid := n.Children[j]
 			res.Nodes[cid].Parent = i
+			res.Nodes[i].Children = append(res.Nodes[i].Children, cid)
 		}
-		// TODO:  Come back for this scenario
-		//if n.Matrix != nil {
-		//}
-		if n.Scale != nil {
-			res.Nodes[i].Scale = *n.Scale
+		if n.Matrix != nil {
+			// glTF stores the matrix in column-major order, which matches the
+			// engine's Mat4 layout.  Decompose it into the individual TRS
+			// components so the rest of the pipeline stays uniform.
+			res.Nodes[i].Position = n.Matrix.ExtractPosition()
+			res.Nodes[i].Rotation = n.Matrix.ExtractRotation()
+			res.Nodes[i].Scale = n.Matrix.ExtractScale()
 		} else {
-			res.Nodes[i].Scale = matrix.Vec3One()
-		}
-		if n.Rotation != nil {
-			res.Nodes[i].Rotation = matrix.QuaternionFromXYZW(*n.Rotation)
-		} else {
-			res.Nodes[i].Rotation = matrix.QuaternionIdentity()
-		}
-		if n.Translation != nil {
-			res.Nodes[i].Position = *n.Translation
-		}
-		if n.Mesh == nil {
-			continue
-		}
-		m := &doc.glTF.Meshes[*n.Mesh]
-		for p := range m.Primitives {
-			rmd := new(rawMeshData)
-			if verts, err := gltfReadMeshVerts(m, doc, p); err != nil {
-				return res, err
-			} else if indices, err := gltfReadMeshIndices(m, doc, p); err != nil {
-				return res, err
+			if n.Scale != nil {
+				res.Nodes[i].Scale = *n.Scale
 			} else {
-				rmd.verts = verts
-				rmd.indices = indices
+				res.Nodes[i].Scale = matrix.Vec3One()
 			}
-			textures := gltfReadMeshTextures(m, doc, p, res.TextureBytes)
-			key := fmt.Sprintf("%s/%s", doc.path, m.Name)
-			if p > 0 {
-				key += fmt.Sprintf("_%d", p+1)
+			if n.Rotation != nil {
+				res.Nodes[i].Rotation = matrix.QuaternionFromXYZW(*n.Rotation)
+			} else {
+				res.Nodes[i].Rotation = matrix.QuaternionIdentity()
 			}
-			res.Add(n.Name, key, rmd.verts, rmd.indices, textures, &res.Nodes[i])
+			if n.Translation != nil {
+				res.Nodes[i].Position = *n.Translation
+			}
+		}
+		// A node is an "Empty" (Blender locator / reference point) when it
+		// carries no renderable content and no skin.  Such nodes are kept in
+		// the result so callers can use them as attach points or physics
+		// reference frames (e.g. wheel hub positions on a vehicle).
+		if n.Mesh == nil && n.Camera == nil && n.Skin == nil {
+			res.Nodes[i].IsEmpty = true
+		} else if n.Mesh != nil {
+			m := &doc.glTF.Meshes[*n.Mesh]
+			for p := range m.Primitives {
+				rmd := new(rawMeshData)
+				if verts, err := gltfReadMeshVerts(m, doc, p); err != nil {
+					return res, err
+				} else if indices, err := gltfReadMeshIndices(m, doc, p); err != nil {
+					return res, err
+				} else {
+					rmd.verts = verts
+					rmd.indices = indices
+				}
+				textures := gltfReadMeshTextures(m, doc, p, res.TextureBytes)
+				key := fmt.Sprintf("%s/%s", doc.path, m.Name)
+				if p > 0 {
+					key += fmt.Sprintf("_%d", p+1)
+				}
+				res.Add(n.Name, key, rmd.verts, rmd.indices, textures, &res.Nodes[i])
+			}
 		}
 	}
 	res.Animations = gltfReadAnimations(doc)
