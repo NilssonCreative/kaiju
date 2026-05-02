@@ -48,6 +48,8 @@ import (
 
 	"kaijuengine.com/editor/project/project_file_system"
 	"kaijuengine.com/engine/assets"
+	"kaijuengine.com/engine/stages"
+	"kaijuengine.com/engine_entity_data/engine_entity_data_empty"
 	"kaijuengine.com/klib"
 	"kaijuengine.com/platform/profiler/tracing"
 	"kaijuengine.com/rendering"
@@ -74,6 +76,7 @@ func (Mesh) ExtNames() []string { return []string{".gltf", ".glb", ".obj"} }
 type meshImportPostProcData struct {
 	mesh         load_result.Mesh
 	meshes       []load_result.Mesh
+	nodes        []load_result.Node
 	isAnimated   bool
 	textureBytes map[string][]byte
 }
@@ -106,7 +109,6 @@ func (Mesh) Import(src string, _ *project_file_system.FileSystem) (ProcessedImpo
 	if len(res.Meshes) == 0 {
 		return p, NoMeshesInFileError{Path: src}
 	}
-	baseName := fileNameNoExt(src)
 	kms := kaiju_mesh.LoadedResultToKaijuMesh(res)
 	postProcData := map[string]meshImportPostProcData{}
 	for i := range kms {
@@ -114,9 +116,8 @@ func (Mesh) Import(src string, _ *project_file_system.FileSystem) (ProcessedImpo
 		if err != nil {
 			return p, err
 		}
-		parts := strings.Split(kms[i].Name, "/")
 		v := ImportVariant{
-			Name: fmt.Sprintf("%s-%s", baseName, parts[len(parts)-1]),
+			Name: res.Meshes[i].Name,
 			Data: kd,
 		}
 		p.Variants = append(p.Variants, v)
@@ -124,6 +125,7 @@ func (Mesh) Import(src string, _ *project_file_system.FileSystem) (ProcessedImpo
 		postProcData[v.Name] = meshImportPostProcData{
 			mesh:         res.Meshes[i],
 			meshes:       res.Meshes,
+			nodes:        res.Nodes,
 			isAnimated:   isAnimated,
 			textureBytes: res.TextureBytes,
 		}
@@ -291,7 +293,8 @@ func (Mesh) PostImportProcessing(proc ProcessedImport, res *ImportResult, fs *pr
 			mat.Textures = append(mat.Textures, matchTexture(t))
 		}
 	}
-	// Determine if a matching material already exists
+	// Determine if a matching material already exists; if so, reuse its ID.
+	matId := ""
 	options := cache.ListByType(Material{}.TypeName())
 	// Searching reverse here as the latest additions are more likely to collide
 	for i := len(options) - 1; i >= 0; i-- {
@@ -318,34 +321,164 @@ func (Mesh) PostImportProcessing(proc ProcessedImport, res *ImportResult, fs *pr
 			same = mat.Textures[j] == dm.Textures[j]
 		}
 		if same {
-			return nil
+			matId = options[i].Id()
+			break
 		}
 	}
-	f, err := os.CreateTemp("", "*-kaiju-mat.material")
-	if err != nil {
-		return err
+	if matId == "" {
+		f, err := os.CreateTemp("", "*-kaiju-mat.material")
+		if err != nil {
+			return err
+		}
+		tempPath := f.Name()
+		defer os.Remove(tempPath)
+		if err = json.NewEncoder(f).Encode(mat); err != nil {
+			f.Close()
+			return err
+		}
+		if err = f.Close(); err != nil {
+			return err
+		}
+		matRes, err := Import(tempPath, fs, cache, linkedId)
+		if err != nil {
+			return err
+		}
+		res.Dependencies = append(res.Dependencies, matRes[0])
+		matId = matRes[0].Id
+		ccMat, err := cache.Read(matId)
+		if err != nil {
+			return err
+		}
+		_, err = cache.Rename(ccMat.Id(), fmt.Sprintf("%s_mat", cc.Config.Name), fs)
+		if !errors.Is(err, CacheContentNameEqual) {
+			return err
+		}
 	}
-	tempPath := f.Name()
-	defer os.Remove(tempPath)
-	if err = json.NewEncoder(f).Encode(mat); err != nil {
-		f.Close()
-		return err
+	return meshGenerateTemplates(proc, res, fs, cache, linkedId, variant, matId, cc.Config.SrcName)
+}
+
+// meshGenerateTemplates creates one .template file per GLTF scene root node
+// once all mesh variants for the same source file have been imported.
+func meshGenerateTemplates(_ ProcessedImport, res *ImportResult, fs *project_file_system.FileSystem, cache *Cache, linkedId string, variant meshImportPostProcData, matId, meshSrcName string) error {
+	if len(variant.nodes) == 0 {
+		return nil
 	}
-	if err = f.Close(); err != nil {
-		return err
+	// Build nodeNameToMeshId and nodeNameToMatId maps. For a multi-variant file
+	// all variants share the same linkedId, so we can use ReadLinked to gather
+	// the full set. For a single-variant file with no external dependencies
+	// (linkedId == ""), we derive the IDs from the current result directly.
+	nodeNameToMeshId := make(map[string]string)
+	nodeNameToMatId := make(map[string]string)
+	meshNodeCount := len(variant.meshes)
+
+	if linkedId != "" {
+		linkedAll, err := cache.ReadLinked(linkedId)
+		if err != nil {
+			return nil
+		}
+		linkedMeshCount := 0
+		for _, lc := range linkedAll {
+			switch lc.Config.Type {
+			case Mesh{}.TypeName():
+				linkedMeshCount++
+				nodeNameToMeshId[lc.Config.SrcName] = lc.Id()
+			case Material{}.TypeName():
+				if strings.HasSuffix(lc.Config.Name, "_mat") {
+					mn := strings.TrimSuffix(lc.Config.Name, "_mat")
+					nodeNameToMatId[mn] = lc.Id()
+				}
+			}
+		}
+		// Not all meshes have been imported yet — defer template generation.
+		if linkedMeshCount < meshNodeCount {
+			return nil
+		}
+	} else {
+		// Single-variant, no external-dependency case.
+		nodeNameToMeshId[meshSrcName] = res.Id
+		nodeNameToMatId[meshSrcName] = matId
 	}
-	matRes, err := Import(tempPath, fs, cache, linkedId)
-	if err != nil {
-		return err
+
+	// For the single-variant case the effective linkedId for the template is
+	// the mesh's own content ID, giving a stable anchor for future lookups.
+	templateLinkedId := linkedId
+	if templateLinkedId == "" {
+		templateLinkedId = res.Id
 	}
-	res.Dependencies = append(res.Dependencies, matRes[0])
-	ccMat, err := cache.Read(matRes[0].Id)
-	if err != nil {
-		return err
+
+	// Map from node ID → mesh node name (used to decide mesh vs empty).
+	nodeIdToMeshName := make(map[int32]string, len(variant.meshes))
+	for i := range variant.meshes {
+		if variant.meshes[i].Node != nil {
+			nodeIdToMeshName[variant.meshes[i].Node.Id] = variant.meshes[i].Name
+		}
 	}
-	_, err = cache.Rename(ccMat.Id(), fmt.Sprintf("%s_mat", cc.Config.Name), fs)
-	if !errors.Is(err, CacheContentNameEqual) {
-		return err
+
+	// Build parent-to-children index.
+	childrenByParent := make(map[int][]int, len(variant.nodes))
+	for i, n := range variant.nodes {
+		if n.Parent >= 0 {
+			childrenByParent[n.Parent] = append(childrenByParent[n.Parent], i)
+		}
+	}
+
+	emptyKey := engine_entity_data_empty.BindingKey()
+
+	var buildDesc func(nodeIdx int) stages.EntityDescription
+	buildDesc = func(nodeIdx int) stages.EntityDescription {
+		n := variant.nodes[nodeIdx]
+		desc := stages.EntityDescription{
+			Name:     n.Name,
+			Position: n.Position,
+			Rotation: n.Rotation.ToEuler(),
+			Scale:    n.Scale,
+		}
+		if meshName, hasMesh := nodeIdToMeshName[n.Id]; hasMesh {
+			desc.Mesh = nodeNameToMeshId[meshName]
+			desc.Material = nodeNameToMatId[meshName]
+		} else {
+			desc.DataBinding = []stages.EntityDataBinding{
+				{RegistraionKey: emptyKey},
+			}
+		}
+		for _, childIdx := range childrenByParent[nodeIdx] {
+			desc.Children = append(desc.Children, buildDesc(childIdx))
+		}
+		return desc
+	}
+
+	for i, n := range variant.nodes {
+		if n.Parent != -1 {
+			continue
+		}
+		desc := buildDesc(i)
+		templateData, err := json.Marshal(desc)
+		if err != nil {
+			slog.Error("failed to marshal entity template", "node", n.Name, "error", err)
+			continue
+		}
+		tf, err := os.CreateTemp("", "*-kaiju.template")
+		if err != nil {
+			slog.Error("failed to create temp template file", "error", err)
+			continue
+		}
+		if _, err = tf.Write(templateData); err != nil {
+			tf.Close()
+			os.Remove(tf.Name())
+			continue
+		}
+		tf.Close()
+		tempPath := tf.Name()
+		tmplRes, err := Import(tempPath, fs, cache, templateLinkedId)
+		os.Remove(tempPath)
+		if err != nil || len(tmplRes) == 0 {
+			slog.Error("failed to import entity template", "node", n.Name, "error", err)
+			continue
+		}
+		res.Dependencies = append(res.Dependencies, tmplRes[0])
+		if _, err = cache.Rename(tmplRes[0].Id, n.Name, fs); err != nil && !errors.Is(err, CacheContentNameEqual) {
+			slog.Error("failed to rename entity template", "node", n.Name, "error", err)
+		}
 	}
 	return nil
 }
