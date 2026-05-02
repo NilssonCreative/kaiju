@@ -51,6 +51,7 @@ import (
 	"kaijuengine.com/engine/stages"
 	"kaijuengine.com/engine_entity_data/engine_entity_data_empty"
 	"kaijuengine.com/klib"
+	"kaijuengine.com/matrix"
 	"kaijuengine.com/platform/profiler/tracing"
 	"kaijuengine.com/rendering"
 	"kaijuengine.com/rendering/loaders"
@@ -406,11 +407,13 @@ func meshGenerateTemplates(_ ProcessedImport, res *ImportResult, fs *project_fil
 		templateLinkedId = res.Id
 	}
 
-	// Map from node ID → mesh node name (used to decide mesh vs empty).
-	nodeIdToMeshName := make(map[int32]string, len(variant.meshes))
+	// Map from node ID → all mesh names for that node (a GLTF node may have
+	// multiple primitives, each becoming a separate imported mesh).
+	nodeIdToMeshNames := make(map[int32][]string, len(variant.meshes))
 	for i := range variant.meshes {
 		if variant.meshes[i].Node != nil {
-			nodeIdToMeshName[variant.meshes[i].Node.Id] = variant.meshes[i].Name
+			id := variant.meshes[i].Node.Id
+			nodeIdToMeshNames[id] = append(nodeIdToMeshNames[id], variant.meshes[i].Name)
 		}
 	}
 
@@ -433,9 +436,22 @@ func meshGenerateTemplates(_ ProcessedImport, res *ImportResult, fs *project_fil
 			Rotation: n.Rotation.ToEuler(),
 			Scale:    n.Scale,
 		}
-		if meshName, hasMesh := nodeIdToMeshName[n.Id]; hasMesh {
-			desc.Mesh = nodeNameToMeshId[meshName]
-			desc.Material = nodeNameToMatId[meshName]
+		if meshNames, hasMesh := nodeIdToMeshNames[n.Id]; hasMesh {
+			desc.Mesh = nodeNameToMeshId[meshNames[0]]
+			desc.Material = nodeNameToMatId[meshNames[0]]
+			// Additional primitives of the same GLTF node become zero-offset
+			// child entities so that all materials are represented.
+			for _, mn := range meshNames[1:] {
+				child := stages.EntityDescription{
+					Name:     mn,
+					Position: matrix.Vec3Zero(),
+					Rotation: matrix.Vec3Zero(),
+					Scale:    matrix.Vec3One(),
+					Mesh:     nodeNameToMeshId[mn],
+					Material: nodeNameToMatId[mn],
+				}
+				desc.Children = append(desc.Children, child)
+			}
 		} else {
 			desc.DataBinding = []stages.EntityDataBinding{
 				{RegistraionKey: emptyKey},

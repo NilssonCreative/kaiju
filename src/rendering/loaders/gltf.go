@@ -261,10 +261,12 @@ func gltfParse(doc *fullGLTF) (load_result.Result, error) {
 			}
 			textures := gltfReadMeshTextures(m, doc, p, res.TextureBytes)
 			key := fmt.Sprintf("%s/%s", doc.path, m.Name)
+			meshName := n.Name
 			if p > 0 {
 				key += fmt.Sprintf("_%d", p+1)
+				meshName = fmt.Sprintf("%s_%d", n.Name, p+1)
 			}
-			res.Add(n.Name, key, rmd.verts, rmd.indices, textures, &res.Nodes[i])
+			res.Add(meshName, key, rmd.verts, rmd.indices, textures, &res.Nodes[i])
 		}
 	}
 	res.Animations = gltfReadAnimations(doc)
