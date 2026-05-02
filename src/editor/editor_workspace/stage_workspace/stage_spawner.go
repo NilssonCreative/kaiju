@@ -49,6 +49,7 @@ import (
 	"kaijuengine.com/engine/assets"
 	"kaijuengine.com/engine/collision"
 	"kaijuengine.com/engine_entity_data/engine_entity_data_camera"
+	_ "kaijuengine.com/engine_entity_data/engine_entity_data_empty" // Run init to register EmptyEntityData
 	"kaijuengine.com/engine_entity_data/engine_entity_data_light"
 	"kaijuengine.com/engine_entity_data/engine_entity_data_particles"
 	"kaijuengine.com/klib"
